@@ -6,7 +6,7 @@
 
 ### What's New (beyond HEARTBEAT queue)
 
-- **Agent-only access**: ernest-mail is a backend API; Ernest Agent is the sole consumer. No web UI, API key required.
+- **Agent-only access**: ernest-mail is a backend API; Ernest Agent is the **only** consumer. No dedicated client app, no web UI. Machine-to-machine auth via shared API key — no human intervention.
 - **Integration contract**: Ernest Agent tools will call ernest-mail instead of nodemailer. Contract defined below.
 - **Phase 5**: Ernest Agent repo changes (env vars, client, tool refactors) to complete the integration.
 - **Resend API**: Default email provider; free tier (3,000 emails/month, 100/day) for early use.
@@ -17,15 +17,27 @@
 
 ## Agent-Only Access Model
 
-ernest-mail is a **backend API service**. The **only** consumer is Ernest Agent (the cognitive agent). Humans and other clients should never call ernest-mail directly.
+ernest-mail is a **backend API service**. **Ernest Agent is the only consumer.** No dedicated client application exists or will be built. Ernest Agent connects directly via HTTP when its tools need to create accounts or send email.
 
 | Principle | Implementation |
 |-----------|----------------|
-| **No public UI** | ernest-mail has no web UI. No dashboard, no login page. |
-| **API key required** | All endpoints except `/health` require `Authorization: ApiKey <key>`. |
-| **Single authorized client** | Ernest Agent holds the API key in `ERNEST_MAIL_API_KEY`. |
-| **No user auth** | No OAuth, JWT, or session-based auth. Service-to-service only. |
+| **Single consumer** | Only Ernest Agent. No other clients are supported or allowed. |
+| **No client app** | No web UI, no dashboard, no human-facing application. Ernest Agent calls the API programmatically from its tool handlers. |
+| **Machine-to-machine auth** | Shared API key. Ernest Agent holds `ERNEST_MAIL_API_KEY` in its environment and sends `Authorization: ApiKey <key>` on every request. **No human intervention** — no OAuth flows, no browser login, no interactive auth. Fully automated. |
+| **API key required** | All endpoints except `/health` require `Authorization: ApiKey <key>`. Requests without a valid key are rejected with 401. |
+| **No user auth** | No OAuth, JWT, or session-based auth. Service-to-service only. Only Ernest Agent (with the correct key) can authenticate. |
 | **Bind localhost by default** | In dev, bind to `127.0.0.1` so ernest-mail is only reachable from the same machine as Ernest Agent. |
+
+### Authentication: Machine-to-Machine Only
+
+ernest-mail uses a **shared secret (API key)** so that only Ernest Agent can connect. This requires **no human intervention**:
+
+- Ernest Agent reads `ERNEST_MAIL_API_KEY` from its environment at startup.
+- When a tool (e.g. `send_email`) needs ernest-mail, the Agent's HTTP client adds the key to the `Authorization` header.
+- No login flow, no tokens to refresh, no browser, no user interaction. The Agent authenticates automatically on every request.
+- The same key is configured in ernest-mail (`API_KEY`). Both sides must match.
+
+This design ensures only Ernest Agent (with the correct env config) can access ernest-mail. No other clients, no human users.
 
 ---
 
