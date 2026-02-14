@@ -6,7 +6,7 @@
 
 ### What's New (beyond HEARTBEAT queue)
 
-- **Agent-only gating**: ernest-mail (and the ecosystem) must be gated so **only agents** can access it — in every conceivable way. Target: attestation / hardware-backed keys. API key is interim; fails when user runs agent locally with full memory access.
+- **Agent-only gating**: ernest-mail must be gated so only agents can access it. **Iterative security** (console model): assume max-power adversaries; aim for costly-to-break, detectable, patchable — not "impossible."
 - **Integration contract**: Ernest Agent tools will call ernest-mail instead of nodemailer. Contract defined below.
 - **Phase 5**: Ernest Agent repo changes (env vars, client, tool refactors) to complete the integration.
 - **Resend API**: Default email provider; free tier (3,000 emails/month, 100/day) for early use.
@@ -15,68 +15,64 @@
 
 ---
 
-## Agent-Only Gating: Goal and Threat Model
+## Agent-Only Gating: Goal and Security Model
 
-**Goal:** The agent ecosystem (ernest-mail and future services) must be **gated so that only agents can access it** — in every conceivable way. Humans, spoofed clients, and modified code must be excluded. No fallback that lets a user obtain credentials and call the API directly.
+**Goal:** The agent ecosystem (ernest-mail and future services) must be **gated so that only agents can access it**. Humans, spoofed clients, and modified code must be excluded.
 
-### Zero-Trust Assumption: User Owns the Machine
+### Threat Model: Max-Power Adversaries
 
-The user runs Ernest Agent on **their own machine**. We must assume a **zero-trust environment**:
+We assume **maximum-power adversaries** who intend to bring the system down:
 
-- The user has full access to process memory, env vars, disk, and network.
-- Any secret stored in the agent's process (API key, token, etc.) can be extracted by the user.
-- Therefore: **a shared API key in env cannot stay secret.** The user can observe it and use it for their own requests. API key auth fails under this threat model.
+- User runs Ernest Agent on **their own machine** with full access: memory, env, disk, network.
+- Adversary can root the machine, patch the OS, extract secrets, forge requests.
+- A shared API key in env cannot stay secret; it will be extracted.
 
-### Target: Attestation / Hardware-Backed Keys
+We do **not** assume we can make the system unbreakable. We assume adversaries will eventually find holes.
 
-To gate access to agents only, we need authentication that **cannot be extracted or forged** by a human:
+### Iterative Security (Console Model)
 
-| Approach | Description | Extractor-resistant? |
-|----------|-------------|----------------------|
-| **API key in env** | Shared secret. | ❌ User can read env, memory, config. |
-| **OAuth / user login** | User logs in; token issued. | ❌ User has the token. |
-| **Server-deployed agent** | Key lives on server. | ✅ User never has key. But: requires hosted deployment; doesn't help local-first. |
-| **Attestation / hardware-backed keys** | Key lives in TPM, HSM, or FIDO2 authenticator. Cannot be extracted. Requests signed by hardware. | ✅ User cannot extract the key. |
+Video game consoles face max-power adversaries (modders, pirates) yet patch exploits over time. The first release may be imperfect; they ship updates that close holes; the cycle repeats. Security is **iterative**, not perfect.
 
-**Target design:** Ernest Agent signs each request using a **hardware-bound key** (TPM, HSM, or FIDO2/WebAuthn). The private key never leaves the device. ernest-mail verifies the signature. A human cannot obtain or replicate the key; they cannot forge valid requests without the hardware.
+| Principle | Implementation |
+|-----------|----------------|
+| **Costly to break** | Hardware-bound keys (TPM, Keychain, YubiKey). Keys not trivially extractable; breaking requires skill and effort. |
+| **Detectable** | Abuse detection (anomalous rate, recipients, patterns). ernest-mail logs and monitors; anomalies flag exploitation. |
+| **Patchable** | When a hole is found, we ship an update. New version closes it; adversary must find a new exploit. |
+| **Revocable** | Detected abuse → revoke credential. Adversary must re-register and re-extract on new version. |
+| **Layered** | Multiple defenses: hardware + code signing + attestation + rate limits + audit. Breaking one layer is not enough. |
 
-### Attestation Implementation Options
+We aim for **practical security through iteration**, not mathematical impossibility.
 
-1. **TPM (Trusted Platform Module)**  
-   - Agent creates a non-exportable key in the TPM, optionally bound to agent binary hash (PCR policy).  
-   - Signs each request. ernest-mail has public key; verifies signature.  
-   - User cannot extract the key; modifying the agent breaks the policy.  
-   - Complexity: TPM setup, cross-platform (Windows/Mac/Linux), provisioning.  
+### Attestation Options (Hardware-Bound Keys)
 
-2. **FIDO2 / WebAuthn (hardware authenticator)**  
-   - YubiKey, Touch ID, or platform authenticator. Key stays in hardware.  
-   - Agent uses a discoverable/resident credential (no user touch for headless).  
-   - ernest-mail verifies assertion. User would need the physical device; key not copyable.  
-   - Complexity: Credential creation flow, headless/user-verification policy, platform support.  
+| Approach | Description | Notes |
+|----------|-------------|-------|
+| **macOS Keychain + app binding** | Key in Keychain; ACL restricts to signed Ernest Agent only. User's scripts cannot read it. | Mac-only. Fails if user roots or disables SIP. Native helper required (Node has no bundle ID). |
+| **TPM** | Non-exportable key in TPM; optionally bound to agent binary (PCR policy). Signs each request. | Cross-platform. Complex setup. Key cannot be extracted; policy can resist modified agent. |
+| **FIDO2 / YubiKey** | Key in hardware authenticator. Agent uses headless credential. ernest-mail verifies assertion. | Key not copyable. User could use same YubiKey from own client — gate is "hardware key" not "only agent." |
+| **Server-deployed agent** | Agent runs on trusted infrastructure; key never on user machine. | Strongest for max-power adversary, but requires hosted deployment. |
 
-3. **HSM (Hardware Security Module)**  
-   - On-device or remote HSM holds the key. Signing happens inside the HSM.  
-   - Similar properties to TPM; common in enterprise.  
-   - Complexity: Cost, provisioning, integration.  
+**Mac-first path:** Keychain + app binding is viable. Ship a signed native helper (Swift/ObjC) that holds the key; Node agent invokes it. Plan TPM/FIDO2 for cross-platform later.
 
 ### Phased Auth Strategy
 
 | Phase | Auth | Use case |
 |-------|------|----------|
-| **Interim / dev** | API key | Local development, server-deployed agent where key is server-side only. User accepts that local+API-key = no extractor resistance. |
-| **Target / production** | Attestation (TPM or FIDO2) | Local agent, zero-trust. Hardware signs; user cannot extract or forge. |
-| **Server-deployed** | API key (server-held) | Agent on trusted server; key never on user machine. Zero-trust satisfied by architecture. |
+| **Interim / dev** | API key | Local development. Accept that local+API-key = extractable. |
+| **v1 (Mac)** | Keychain + app binding | Signed native helper; Keychain ACL. Raise the bar. |
+| **v2+** | TPM or FIDO2 | Cross-platform; iterate as exploits emerge. |
+| **Server-deployed** | API key (server-held) | Agent on trusted infra; key never on user machine. |
 
-### Principles (Unchanged)
+### Principles
 
 | Principle | Implementation |
 |-----------|----------------|
 | **Single consumer** | Only Ernest Agent. No other clients supported. |
 | **No client app** | No web UI, no dashboard. Agent calls API programmatically. |
-| **No human intervention** | Auth must work without login flows, browser, or user action. Hardware signing is automated. |
+| **No human intervention** | Auth works without login flows, browser, or user action. Hardware signing is automated. |
 | **Bind localhost by default** | In dev, ernest-mail on `127.0.0.1`; reduces exposure. |
 
-**Ecosystem scope:** This gating strategy applies to ernest-mail and to the broader Ernest agent ecosystem. Future services (scheduling, storage, tooling APIs) should use the same attestation model so that the entire ecosystem is agent-only.
+**Ecosystem scope:** This gating strategy applies to ernest-mail and the broader Ernest agent ecosystem. Future services should use the same model.
 
 ---
 
@@ -153,12 +149,13 @@ Ernest Agent passes `tenantId` in the request (from auth principal). ernest-mail
 
 | Control | Implementation |
 |--------|-----------------|
-| **API key auth** | Required; no anonymous sends. |
+| **API key / attestation auth** | Required; no anonymous sends. Attestation (Phase 3.5) adds hardware-bound keys. |
 | **Tenant isolation** | Credits and rate limits are per-tenant. No cross-tenant leakage. |
 | **Input validation** | Strict schema: email format, subject/body length limits, no executable content. |
-| **Blocklist** | Optional blocklist of domains or addresses (e.g. no send to known sinkholes). |
+| **Abuse detection** | Anomalous rate, recipients, patterns → flag and revoke credential. Adversary must re-register. |
+| **Blocklist** | Optional blocklist of domains or addresses. |
 | **Suspicious pattern detection** | Flag rapid repeated sends to same recipient; temporary throttle or block. |
-| **Audit on deny** | Log all denied requests (insufficient credits, rate limit, validation) for review. |
+| **Audit on deny** | Log all denied requests for review. Supports iterative response when exploits emerge. |
 
 ---
 
@@ -319,17 +316,18 @@ Per HEARTBEAT rules: run only the **first unchecked** task, but 1.2 is already d
 - Optional: `GET /credits/:tenantId` for balance check.
 
 ### Step 7: Phase 3 — Security, observability, abuse prevention
-- **Auth**: API key middleware (required for non-health routes). **Interim only** — roadmap: Phase 3.5 attestation (TPM/FIDO2) for agent-only gating.
+- **Auth**: API key middleware (required for non-health routes). **Interim** — Phase 3.5 adds attestation (Keychain/TPM/FIDO2). Iterative security: v1 raises bar; patch when exploited.
 - **Observability**: Structured request logging (method, path, tenantId, status, duration); send-event logging (tenantId, recipient, cost, Resend ID); error logging with context
 - **Spam prevention**: Per-tenant rate limit (emails/hour); global rate limit; recipient cap (e.g. 1 per send); light content validation
 - **Malicious use**: Tenant isolation; input validation (email format, length limits); blocklist (optional); audit on deny
 - **Config**: `.env.example` (API_KEY, RESEND_API_KEY, ADMIN_TENANT_IDS, rate limits, storage path)
 - Bind to localhost by default in dev
 
-### Step 7.5: Phase 3.5 — Attestation (future, agent-only gating)
-- **ernest-mail**: Add signature verification middleware. Accept API key (interim) or attested request (TPM/FIDO2 signature).
-- **Ernest Agent**: TPM or FIDO2 signing. Hardware-bound key; sign each request; key never extractable.
-- Deprecate API key for local agent once attestation is stable; keep API key only for server-deployed agent.
+### Step 7.5: Phase 3.5 — Attestation (iterative, agent-only gating)
+- **ernest-mail**: Signature verification middleware. Accept API key (interim) or attested request (Keychain/TPM/FIDO2).
+- **Ernest Agent (Mac v1)**: Keychain + app binding. Signed native helper; key in Keychain with ACL. Raise the bar.
+- **Ernest Agent (cross-platform v2+)**: TPM or FIDO2. Add layers as exploits emerge; patch, revoke, iterate.
+- **Abuse detection**: Anomalous rate/recipients → revoke credential. Adversary must re-register.
 
 ---
 
