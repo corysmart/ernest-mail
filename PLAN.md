@@ -35,7 +35,7 @@ Video game consoles face max-power adversaries (modders, pirates) yet patch expl
 
 | Principle | Implementation |
 |-----------|----------------|
-| **Costly to break** | Hardware-bound keys (TPM, Keychain, YubiKey). Keys not trivially extractable; breaking requires skill and effort. |
+| **Costly to break** | Hardware-bound keys (TPM, FIDO2). Keys not trivially extractable; breaking requires skill and effort. |
 | **Detectable** | Abuse detection (anomalous rate, recipients, patterns). ernest-mail logs and monitors; anomalies flag exploitation. |
 | **Patchable** | When a hole is found, we ship an update. New version closes it; adversary must find a new exploit. |
 | **Revocable** | Detected abuse → revoke credential. Adversary must re-register and re-extract on new version. |
@@ -47,20 +47,19 @@ We aim for **practical security through iteration**, not mathematical impossibil
 
 | Approach | Description | Notes |
 |----------|-------------|-------|
-| **macOS Keychain + app binding** | Key in Keychain; ACL restricts to signed Ernest Agent only. User's scripts cannot read it. | Mac-only. Fails if user roots or disables SIP. Native helper required (Node has no bundle ID). |
-| **TPM** | Non-exportable key in TPM; optionally bound to agent binary (PCR policy). Signs each request. | Cross-platform. Complex setup. Key cannot be extracted; policy can resist modified agent. |
-| **FIDO2 / YubiKey** | Key in hardware authenticator. Agent uses headless credential. ernest-mail verifies assertion. | Key not copyable. User could use same YubiKey from own client — gate is "hardware key" not "only agent." |
-| **Server-deployed agent** | Agent runs on trusted infrastructure; key never on user machine. | Strongest for max-power adversary, but requires hosted deployment. |
+| **TPM** | Non-exportable key in TPM; optionally bound to agent binary (PCR policy). Signs each request. | Cross-platform (Windows, Linux; Mac with T2/Secure Enclave). Key cannot be extracted. |
+| **FIDO2 / YubiKey** | Key in hardware authenticator. Agent uses headless credential. ernest-mail verifies assertion. | Cross-platform. Key not copyable. Requires physical device. |
+| **macOS Keychain + app binding** | Key in Keychain; ACL restricts to signed Ernest Agent only. | Mac-only fallback if TPM unavailable. Native helper required. |
+| **Server-deployed agent** | Agent runs on trusted infrastructure; key never on user machine. | Strongest; requires hosted deployment. |
 
-**Mac-first path:** Keychain + app binding is viable. Ship a signed native helper (Swift/ObjC) that holds the key; Node agent invokes it. Plan TPM/FIDO2 for cross-platform later.
+**v1: TPM or FIDO2.** Cross-platform from the start. Both are available on Windows, Linux, and Mac (TPM or platform authenticator). Prefer TPM where present (no extra hardware); fall back to FIDO2 (YubiKey, etc.) when TPM is unavailable or not usable.
 
 ### Phased Auth Strategy
 
 | Phase | Auth | Use case |
 |-------|------|----------|
 | **Interim / dev** | API key | Local development. Accept that local+API-key = extractable. |
-| **v1 (Mac)** | Keychain + app binding | Signed native helper; Keychain ACL. Raise the bar. |
-| **v2+** | TPM or FIDO2 | Cross-platform; iterate as exploits emerge. |
+| **v1** | TPM or FIDO2 | Cross-platform attestation. Hardware-bound keys from day one. |
 | **Server-deployed** | API key (server-held) | Agent on trusted infra; key never on user machine. |
 
 ### Principles
@@ -316,17 +315,16 @@ Per HEARTBEAT rules: run only the **first unchecked** task, but 1.2 is already d
 - Optional: `GET /credits/:tenantId` for balance check.
 
 ### Step 7: Phase 3 — Security, observability, abuse prevention
-- **Auth**: API key middleware (required for non-health routes). **Interim** — Phase 3.5 adds attestation (Keychain/TPM/FIDO2). Iterative security: v1 raises bar; patch when exploited.
+- **Auth**: API key middleware (required for non-health routes). **Interim** — Phase 3.5 adds attestation (TPM or FIDO2, cross-platform). Iterative security: v1 raises bar; patch when exploited.
 - **Observability**: Structured request logging (method, path, tenantId, status, duration); send-event logging (tenantId, recipient, cost, Resend ID); error logging with context
 - **Spam prevention**: Per-tenant rate limit (emails/hour); global rate limit; recipient cap (e.g. 1 per send); light content validation
 - **Malicious use**: Tenant isolation; input validation (email format, length limits); blocklist (optional); audit on deny
 - **Config**: `.env.example` (API_KEY, RESEND_API_KEY, ADMIN_TENANT_IDS, rate limits, storage path)
 - Bind to localhost by default in dev
 
-### Step 7.5: Phase 3.5 — Attestation (iterative, agent-only gating)
-- **ernest-mail**: Signature verification middleware. Accept API key (interim) or attested request (Keychain/TPM/FIDO2).
-- **Ernest Agent (Mac v1)**: Keychain + app binding. Signed native helper; key in Keychain with ACL. Raise the bar.
-- **Ernest Agent (cross-platform v2+)**: TPM or FIDO2. Add layers as exploits emerge; patch, revoke, iterate.
+### Step 7.5: Phase 3.5 — Attestation (iterative, cross-platform, agent-only gating)
+- **ernest-mail**: Signature verification middleware. Accept API key (interim) or attested request (TPM or FIDO2).
+- **Ernest Agent v1**: TPM or FIDO2 from the start. Cross-platform: Windows, Linux, Mac. Prefer TPM where present; FIDO2 (YubiKey, etc.) when TPM unavailable.
 - **Abuse detection**: Anomalous rate/recipients → revoke credential. Adversary must re-register.
 
 ---
