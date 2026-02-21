@@ -58,9 +58,9 @@ We aim for **practical security through iteration**, not mathematical impossibil
 
 | Phase | Auth | Use case |
 |-------|------|----------|
-| **Interim / dev** | API key | Local development. Accept that local+API-key = extractable. |
-| **v1** | TPM or FIDO2 | Cross-platform attestation. Hardware-bound keys from day one. |
-| **Server-deployed** | API key (server-held) | Agent on trusted infra; key never on user machine. |
+| **Admin flows** | API key only | Registration, account provisioning. Never used for agent sends. |
+| **v1 Agent flows** | TPM or FIDO2 | Cross-platform attestation. Hardware-bound keys from day one. |
+| **Server-deployed** | API key (server-held) | Agent on trusted infra; key never on user machine. (Future.) |
 
 ### Principles
 

@@ -6,3 +6,9 @@ dist/
 *.log
 .DS_Store
 data/
+node_modules/
+dist/
+.env
+data/
+*.log
+.DS_Store

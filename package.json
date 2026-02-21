@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest run",
+    "test:e2e": "vitest run tests/e2e",
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint . --ext .ts"
@@ -15,6 +16,7 @@
   "type": "module",
   "private": "true",
   "dependencies": {
+    "@simplewebauthn/server": "^13.2.2",
     "express": "^5.2.1"
   },
   "directories": {
