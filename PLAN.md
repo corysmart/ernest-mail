@@ -238,25 +238,25 @@ The mission: *"Provide email account creation and email sending APIs for Ernest 
 
 | Task | Queue Status | Actual State | Notes |
 |------|--------------|--------------|-------|
-| **0.0** Git init, .gitignore, initial commit | [x] | **INCOMPLETE** | No `git init`; no `.gitignore`; workspace reports "Is directory a git repo: No" |
+| **0.0** Git init, .gitignore, initial commit | [x] | ✅ DONE | Repo initialized, .gitignore, committed |
 | **0.1** Workspace, README | [x] | ✅ DONE | README exists with mission statement |
 | **0.2** Node + TypeScript scaffold | [x] | ✅ DONE | package.json, tsconfig, src/, tests/, build/dev/test/lint scripts; deps installed |
-| **0.3** HTTP server + `/health` | [x] | **INCOMPLETE** | `src/index.ts` does not exist; dev script references it; no Express server |
-| **1.1** Account domain model | [x] | ✅ DONE | `src/accounts.ts` — Account, CreateAccountInput, AccountRepository |
-| **1.2** File-backed repository | [ ] | ✅ DONE | `src/fileAccountRepository.ts` — full CRUD, atomic writes (temp+rename), write lock |
-| **1.3** POST /accounts | [ ] | NOT DONE | Blocked by 0.3 (no HTTP server) |
-| **1.4** Tests for model/repo/POST | [ ] | NOT DONE | `tests/` is empty |
+| **0.3** HTTP server + `/health` | [x] | ✅ DONE | `src/index.ts` — Express app, GET /health, bind localhost in dev |
+| **1.1** Account domain model | [x] | ✅ DONE | `src/accounts.ts` — Account, CreateAccountInput, AccountRepository, resend provider |
+| **1.2** File-backed repository | [x] | ✅ DONE | `src/fileAccountRepository.ts` — full CRUD, atomic writes (temp+rename), write lock |
+| **1.3** POST /accounts | [ ] | ✅ DONE | POST /accounts, GET /accounts/:id, API key required, validation, 409 on duplicate |
+| **1.4** Tests for model/repo/POST | [ ] | ✅ DONE | Unit tests (accounts, fileAccountRepository), e2e tests (POST/GET accounts) |
 | **2.x** Email sending | [ ] | NOT DONE | — |
-| **3.x** Security/ops | [ ] | NOT DONE | — |
+| **3.x** Security/ops | [ ] | PARTIAL | Attestation (3.5), admin API key; rate limits, observability pending |
 | **4.x** Done criteria | [ ] | NOT DONE | — |
 
 ---
 
 ## Discrepancies
 
-1. **0.0** — Queue shows complete; repo has no git. Either different environment or reverted.
-2. **0.3** — Queue shows complete; Run Notes (2026-02-11) say "Reversed 0.3: src/index.ts missing". No HTTP server present.
-3. **1.2** — Queue shows incomplete; implementation exists and is complete (atomic writes, write lock, all interface methods).
+1. ~~**0.0**~~ — Resolved; repo is initialized.
+2. ~~**0.3**~~ — Resolved; HTTP server implemented.
+3. ~~**1.2**~~ — Resolved; marked complete.
 
 ---
 
@@ -370,15 +370,17 @@ Per HEARTBEAT rules: run only the **first unchecked** task, but 1.2 is already d
 |------|---------|
 | `accounts.ts` | Domain types and `AccountRepository` interface |
 | `fileAccountRepository.ts` | File-backed `AccountRepository` implementation |
-| `index.ts` | **MISSING** — should be Express app with /health |
+| `index.ts` | Express app: /health, POST /accounts, GET /accounts/:id, agent registration |
+| `attestation/` | Agent registry, verifier, middleware (Phase 3.5) |
 
 ---
 
 ## Quick Commands
 
 ```bash
-npm run build   # ✅ passes
-npm run test    # (no tests yet; vitest may report 0 tests)
-npm run lint    # (requires eslint config for .ts)
-npm run dev     # fails — src/index.ts missing
+npm run build    # ✅ passes
+npm run test     # ✅ unit tests (vitest)
+npm run test:e2e # ✅ e2e tests
+npm run lint     # (requires eslint config for .ts)
+npm run dev      # ✅ starts server on 127.0.0.1:3100
 ```

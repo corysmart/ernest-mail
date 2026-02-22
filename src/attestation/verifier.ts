@@ -122,7 +122,7 @@ async function verifyFido2Attestation(
       expectedRPID: rpID,
       credential: {
         id: credential.credentialId,
-        publicKey: credential.publicKey,
+        publicKey: new Uint8Array(credential.publicKey),
         counter: credential.counter,
         transports: credential.transports,
       },

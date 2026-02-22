@@ -1,4 +1,4 @@
-export type AccountProvider = 'local-dev' | 'smtp' | 'ses' | 'sendgrid';
+export type AccountProvider = 'local-dev' | 'resend' | 'smtp' | 'ses' | 'sendgrid';
 
 export type AccountStatus = 'pending' | 'active' | 'disabled';
 

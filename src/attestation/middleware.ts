@@ -4,11 +4,8 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import {
-  verifyAttestation,
-  type AgentRegistry,
-  type Attestation,
-} from './verifier.js';
+import { verifyAttestation, type AgentRegistry } from './verifier.js';
+import type { Attestation } from './types.js';
 
 const API_KEY_HEADER = 'authorization';
 const ATTESTATION_HEADER = 'x-attestation';

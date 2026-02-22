@@ -16,10 +16,16 @@ import type {
 } from './verifier.js';
 import type { RegistrationResponseJSON } from '@simplewebauthn/server';
 
+type StoredFido2Agent = Omit<Fido2RegisteredAgent, 'publicKey'> & {
+  agentId: string;
+  publicKey: number[];
+};
+
+/** Serializable agent for JSON storage. Fido2 publicKey stored as number[]. */
 interface AgentStore {
   agents: Array<
     | (TpmRegisteredAgent & { agentId: string })
-    | (Fido2RegisteredAgent & { agentId: string })
+    | StoredFido2Agent
   >;
 }
 
@@ -75,22 +81,22 @@ export class FileAgentRegistry {
                   publicKey: (a as TpmRegisteredAgent).publicKey,
                   createdAt: (a as TpmRegisteredAgent).createdAt,
                 }
-              : {
-                  agentId: a.agentId,
-                  format: 'fido2',
-                  credentialId: (a as Fido2RegisteredAgent).credentialId,
-                  publicKey: new Uint8Array(
-                    (a as Fido2RegisteredAgent & { publicKey: number[] })
-                      .publicKey
-                  ),
-                  counter: (a as Fido2RegisteredAgent).counter,
-                  transports: (a as Fido2RegisteredAgent).transports,
-                  createdAt: (a as Fido2RegisteredAgent).createdAt,
-                };
+              : (() => {
+                  const f = a as StoredFido2Agent;
+                  return {
+                    agentId: f.agentId,
+                    format: 'fido2' as const,
+                    credentialId: f.credentialId,
+                    publicKey: new Uint8Array(f.publicKey),
+                    counter: f.counter,
+                    transports: f.transports,
+                    createdAt: f.createdAt,
+                  } satisfies Fido2RegisteredAgent;
+                })();
           this.cache.set(a.agentId, agent);
           if (a.format === 'fido2') {
             this.cache.set(
-              (a as Fido2RegisteredAgent).credentialId,
+              (a as StoredFido2Agent).credentialId,
               agent as Fido2RegisteredAgent
             );
           }

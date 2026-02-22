@@ -15,12 +15,13 @@ describe('accounts domain', () => {
     it('allows valid provider values', () => {
       const providers: AccountProvider[] = [
         'local-dev',
+        'resend',
         'smtp',
         'ses',
         'sendgrid',
       ];
       for (const p of providers) {
-        expect(p).toMatch(/^(local-dev|smtp|ses|sendgrid)$/);
+        expect(p).toMatch(/^(local-dev|resend|smtp|ses|sendgrid)$/);
       }
     });
   });
