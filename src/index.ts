@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import express from 'express';
 import { createAdminAuthMiddleware, createAgentAuthMiddleware } from './attestation/middleware.js';
 import { FileAgentRegistry } from './attestation/agentRegistry.js';
+import { verifySelfRegistration } from './attestation/selfRegister.js';
+import { FileTokenStore } from './tokens/tokenStore.js';
 import { InMemoryReplayStore } from './attestation/replayStore.js';
 import { FileAccountRepository } from './fileAccountRepository.js';
 import { FileWalletStore } from './fileWalletStore.js';
@@ -46,6 +48,10 @@ const walletPath =
 const defaultInitialCredits = Number(process.env.DEFAULT_INITIAL_CREDITS ?? 0) || 0;
 const walletStore = new FileWalletStore(walletPath, { defaultInitialCredits });
 const creditsPerEmail = Math.max(1, Number(process.env.CREDITS_PER_EMAIL ?? 1) || 1);
+
+const tokensPath =
+  process.env.REGISTRATION_TOKENS_PATH ?? join(process.cwd(), 'data', 'registration-tokens.json');
+const tokenStore = new FileTokenStore(tokensPath);
 
 const adminAuth = createAdminAuthMiddleware({
   getApiKey: () => process.env.API_KEY,
@@ -146,6 +152,24 @@ app.get('/accounts/:id', adminAuth, async (req, res) => {
   res.json(withRequestId(res, account));
 });
 
+/** Create one-time registration tokens. Admin only (API key). */
+app.post('/tokens', adminAuth, async (req, res) => {
+  const body = req.body as { count?: number };
+  const count = typeof body?.count === 'number' ? Math.min(100, Math.max(1, body.count)) : 1;
+  try {
+    const tokens = await tokenStore.createToken(count);
+    res.status(201).json(withRequestId(res, { tokens }));
+  } catch (err) {
+    res
+      .status(400)
+      .json(
+        withRequestId(res, {
+          error: err instanceof Error ? err.message : 'Token creation failed',
+        })
+      );
+  }
+});
+
 /** Get credits balance for tenant. API key required. */
 app.get('/credits/:tenantId', adminAuth, async (req, res) => {
   const tenantId = req.params.tenantId;
@@ -172,6 +196,63 @@ app.post('/emails/send', agentAuth, async (req, res) => {
     creditsPerEmail
   });
   res.status(result.status).json(withRequestId(res, result.body));
+});
+
+/** Self-register agent (no admin). Requires one-time token + key proof. */
+app.post('/agents/self-register', async (req, res) => {
+  const body = req.body as {
+    token?: string;
+    agentId?: string;
+    agent_id?: string;
+    format?: string;
+    publicKey?: string;
+    public_key?: string;
+    signature?: string;
+    payload?: { action?: string; agentId?: string; timestamp?: string };
+  };
+  const token = (body.token ?? '').trim();
+  if (!token) {
+    res.status(401).json(withRequestId(res, { error: 'token required for self-registration' }));
+    return;
+  }
+  const agentId = (body.agentId ?? body.agent_id)?.trim();
+  const format = body.format ?? 'tpm';
+  if (!agentId || format !== 'tpm') {
+    res.status(400).json(withRequestId(res, { error: 'agentId and format=tpm required' }));
+    return;
+  }
+  const publicKey = (body.publicKey ?? body.public_key)?.trim();
+  const signature = body.signature?.trim();
+  const payload = body.payload;
+  if (!publicKey || !signature || !payload || typeof payload !== 'object') {
+    res.status(400).json(withRequestId(res, { error: 'publicKey, signature, and payload required' }));
+    return;
+  }
+  const regPayload = {
+    action: String(payload.action ?? ''),
+    agentId: String(payload.agentId ?? ''),
+    timestamp: String(payload.timestamp ?? '')
+  };
+  if (!verifySelfRegistration({ agentId, publicKey, signature, payload: regPayload })) {
+    res.status(401).json(withRequestId(res, { error: 'Invalid signature or stale payload' }));
+    return;
+  }
+  const consumed = await tokenStore.consumeToken(token);
+  if (!consumed) {
+    res.status(401).json(withRequestId(res, { error: 'Invalid or already used token' }));
+    return;
+  }
+  try {
+    await agentRegistry.load();
+    const agent = await agentRegistry.registerTpm(agentId, publicKey);
+    res.status(201).json(withRequestId(res, { agentId: agent.agentId, format: 'tpm' }));
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        withRequestId(res, { error: err instanceof Error ? err.message : 'Registration failed' })
+      );
+  }
 });
 
 /** Register agent (TPM or FIDO2). Admin only (API key). */

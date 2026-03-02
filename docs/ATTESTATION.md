@@ -40,7 +40,7 @@ The Ernest Agent `ernest-mail-client` currently uses `Authorization: ApiKey` for
 
 ### Migration path
 
-1. **Preregistration**: Register the agent via `POST /agents/register` (admin, API key) before any sends.
+1. **Preregistration**: Register the agent via `POST /agents/self-register` (token + key proof) or `POST /agents/register` (admin, API key). For self-register: obtain a token from `POST /tokens`, set `ERNEST_MAIL_REGISTRATION_TOKEN`, then call `registerErnestMailAgent()` once (or rely on lazy registration on first send).
 2. **Client changes**: Update `sendViaErnestMail` (and any tool calling it) to:
    - Produce TPM or FIDO2 attestation for each send request
    - Send `X-Attestation: <base64url-encoded-attestation>` instead of (or in addition to) API key for `/emails/send`
