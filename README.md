@@ -5,7 +5,7 @@ Mission: Provide email account creation and email sending APIs for Ernest agents
 ## Architecture
 - Express 5 service with JSON APIs; `/health` is open, all other routes require admin API key.
 - File-backed storage in `data/accounts.json` and `data/agents.json` with atomic writes via temp files.
-- Provider adapters isolate email vendors; only `local-dev` is implemented today via `LocalDevProviderAdapter` (no external calls).
+- Provider adapters isolate email vendors: `resend` (production default, Resend API) and `local-dev` (LocalDevProviderAdapter, no external calls).
 - Security: `Authorization: ApiKey <key>` middleware, in-memory rate limiting, structured error responses, and request logging with request IDs.
 - Optional agent attestation flows (TPM/FIDO2) are stubbed via `FileAgentRegistry` for future hardware-bound agents.
 
@@ -70,6 +70,7 @@ curl -X POST http://127.0.0.1:3100/agents/register \
 - Prerequisites: Node.js 20+ and npm.
 - Install deps: `npm install`
 - Configure env: `cp .env.example .env` then set `API_KEY` (required) and optional paths/limits.
+- For production email: set `RESEND_API_KEY` and `RESEND_FROM` (verified sender); accounts with `provider: "resend"` will use the Resend API. Without `RESEND_API_KEY`, only `local-dev` accounts work.
 - Start dev server: `npm run dev` (binds 127.0.0.1:3100 by default; production binds 0.0.0.0 when `NODE_ENV=production`).
 - Run checks: `npm run lint && npm run build && npm test`
 - Data files in `data/` persist between runs; delete them to reset local state.

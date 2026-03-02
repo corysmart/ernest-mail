@@ -1,5 +1,6 @@
 import type { Account, AccountProvider, AccountStatus } from './accounts.js';
 import { LocalDevProviderAdapter } from './providers/localDevAdapter.js';
+import { ResendProviderAdapter } from './providers/resendAdapter.js';
 
 /**
  * Provider adapter contracts for provisioning accounts and sending email.
@@ -92,11 +93,11 @@ export interface ProviderAdapter {
 }
 
 export { LocalDevProviderAdapter } from './providers/localDevAdapter.js';
+export { ResendProviderAdapter } from './providers/resendAdapter.js';
 
 /**
  * Return a singleton adapter for the requested provider.
- * Currently only the local-dev adapter is implemented; other providers
- * will be added in later tasks.
+ * Resend is the production default when RESEND_API_KEY is set.
  */
 export function getProviderAdapter(provider: AccountProvider): ProviderAdapter {
   switch (provider) {
@@ -105,9 +106,15 @@ export function getProviderAdapter(provider: AccountProvider): ProviderAdapter {
         localDevAdapter = new LocalDevProviderAdapter();
       }
       return localDevAdapter;
+    case 'resend':
+      if (!resendAdapter) {
+        resendAdapter = new ResendProviderAdapter();
+      }
+      return resendAdapter;
     default:
       throw new Error(`Provider adapter not implemented: ${provider}`);
   }
 }
 
 let localDevAdapter: LocalDevProviderAdapter | undefined;
+let resendAdapter: ResendProviderAdapter | undefined;
