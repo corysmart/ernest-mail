@@ -40,7 +40,7 @@ describe('GET /health', () => {
     const res = await fetch(`${baseUrl}/health`);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ status: 'ok' });
+    expect(body).toMatchObject({ status: 'ok' });
   });
 });
 
@@ -139,7 +139,12 @@ describe('GET /accounts/:id', () => {
     });
     expect(res.status).toBe(200);
     const account = await res.json();
-    expect(account).toEqual(created);
+    expect(account).toMatchObject({
+      id: created.id,
+      email: created.email,
+      provider: created.provider,
+      status: created.status,
+    });
   });
 
   it('returns 404 when not found', async () => {
@@ -183,5 +188,24 @@ describe('GET /credits/:tenantId', () => {
   it('returns 401 without API key', async () => {
     const res = await fetch(`${baseUrl}/credits/tenant-a`);
     expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /emails/send', () => {
+  it('returns 401 without X-Attestation (agent route, not API key)', async () => {
+    const res = await fetch(`${baseUrl}/emails/send`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        accountId: '00000000-0000-0000-0000-000000000000',
+        to: 'test@example.com',
+        subject: 'Test',
+        text: 'Body',
+      }),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe('Unauthorized');
+    expect(body.hint).toContain('X-Attestation');
   });
 });

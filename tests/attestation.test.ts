@@ -59,6 +59,68 @@ describe('verifyAttestation', () => {
     expect(result).toBeNull();
   });
 
+  it('returns null when requestContext path does not match attestation', async () => {
+    const att: TpmAttestation = {
+      format: 'tpm',
+      signature: 'sig',
+      publicKey: 'unknown-pubkey',
+      payload: {
+        timestamp: new Date().toISOString(),
+        method: 'POST',
+        path: '/health',
+        bodyHash: '',
+      },
+    };
+    const result = await verifyAttestation(att, registry, {
+      method: 'POST',
+      path: '/emails/send',
+      bodyHash: '',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('returns null when requestContext method does not match attestation', async () => {
+    const att: TpmAttestation = {
+      format: 'tpm',
+      signature: 'sig',
+      publicKey: 'unknown-pubkey',
+      payload: {
+        timestamp: new Date().toISOString(),
+        method: 'POST',
+        path: '/emails/send',
+        bodyHash: '',
+      },
+    };
+    const result = await verifyAttestation(att, registry, {
+      method: 'GET',
+      path: '/emails/send',
+      bodyHash: '',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('returns null when requestContext tenantId does not match attestation', async () => {
+    const att: TpmAttestation = {
+      format: 'tpm',
+      signature: 'sig',
+      publicKey: 'unknown-pubkey',
+      payload: {
+        timestamp: new Date().toISOString(),
+        method: 'POST',
+        path: '/emails/send',
+        bodyHash: '',
+        tenantId: 'tenant-a',
+      },
+    };
+    const result = await verifyAttestation(att, registry, {
+      method: 'POST',
+      path: '/emails/send',
+      bodyHash: '',
+      tenantId: 'tenant-b',
+    });
+    expect(result).toBeNull();
+  });
+
   it('returns null for TPM attestation when timestamp is stale', async () => {
     const agent: TpmRegisteredAgent = {
       agentId: 'agent-1',

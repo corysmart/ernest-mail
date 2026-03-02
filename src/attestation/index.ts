@@ -6,3 +6,5 @@
 export * from './types.js';
 export * from './verifier.js';
 export * from './agentRegistry.js';
+export * from './replayStore.js';
+export * from './bodyHash.js';

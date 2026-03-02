@@ -9,6 +9,7 @@ import {
   createAdminAuthMiddleware,
   createAgentAuthMiddleware,
 } from '../src/attestation/middleware.js';
+import { InMemoryReplayStore, attestationTokenId } from '../src/attestation/replayStore.js';
 
 function mockReq(options: {
   path?: string;
@@ -172,5 +173,53 @@ describe('createAgentAuthMiddleware', () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects when X-Attestation header is missing', async () => {
+    const middleware = createAgentAuthMiddleware({
+      getAgentRegistry: async () => new Map(),
+    });
+    const req = mockReq({ headers: {} });
+    const res = mockRes();
+    const next = vi.fn();
+
+    await middleware(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect((res as { body?: { hint?: string } }).body?.hint).toContain('X-Attestation');
+  });
+
+  it('rejects replayed attestation when replayStore is provided', async () => {
+    const att = {
+      format: 'tpm',
+      signature: 'sig',
+      publicKey: 'pk',
+      payload: {
+        timestamp: new Date().toISOString(),
+        method: 'POST',
+        path: '/emails/send',
+        bodyHash: '',
+      },
+    };
+    const raw = Buffer.from(JSON.stringify(att), 'utf8').toString('base64url');
+    const replayStore = new InMemoryReplayStore();
+    replayStore.markUsed(attestationTokenId(raw));
+
+    const middleware = createAgentAuthMiddleware({
+      getAgentRegistry: async () => new Map(),
+      replayStore,
+    });
+    const req = mockReq({
+      headers: { 'x-attestation': raw },
+    });
+    const res = mockRes();
+    const next = vi.fn();
+
+    await middleware(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect((res as { body?: { hint?: string } }).body?.hint).toContain('replay');
   });
 });

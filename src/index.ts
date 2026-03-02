@@ -6,8 +6,9 @@
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import express from 'express';
-import { createAdminAuthMiddleware } from './attestation/middleware.js';
+import { createAdminAuthMiddleware, createAgentAuthMiddleware } from './attestation/middleware.js';
 import { FileAgentRegistry } from './attestation/agentRegistry.js';
+import { InMemoryReplayStore } from './attestation/replayStore.js';
 import { FileAccountRepository } from './fileAccountRepository.js';
 import { FileWalletStore } from './fileWalletStore.js';
 import type { AccountProvider, CreateAccountInput } from './accounts.js';
@@ -48,6 +49,15 @@ const creditsPerEmail = Math.max(1, Number(process.env.CREDITS_PER_EMAIL ?? 1) |
 
 const adminAuth = createAdminAuthMiddleware({
   getApiKey: () => process.env.API_KEY,
+});
+
+const replayStore = new InMemoryReplayStore();
+const agentAuth = createAgentAuthMiddleware({
+  getAgentRegistry: async () => {
+    await agentRegistry.load();
+    return agentRegistry.getForVerification();
+  },
+  replayStore,
 });
 
 app.get('/health', (_req, res) => {
@@ -147,8 +157,8 @@ app.get('/credits/:tenantId', adminAuth, async (req, res) => {
   res.json(withRequestId(res, { tenantId: tenantId.trim(), balance }));
 });
 
-/** Send an email using a managed account. API key required. */
-app.post('/emails/send', adminAuth, async (req, res) => {
+/** Send an email using a managed account. Attestation required (X-Attestation). */
+app.post('/emails/send', agentAuth, async (req, res) => {
   const tenantId =
     req.body?.tenantId ?? req.body?.tenant_id ?? req.headers['x-tenant-id'];
   const body = {

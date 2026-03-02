@@ -12,3 +12,5 @@ process.env.ACCOUNTS_PATH =
   process.env.ACCOUNTS_PATH ?? join(e2eTmp, 'accounts.json');
 process.env.WALLET_PATH =
   process.env.WALLET_PATH ?? join(e2eTmp, 'wallets.json');
+process.env.AGENTS_PATH =
+  process.env.AGENTS_PATH ?? join(e2eTmp, 'agents.json');

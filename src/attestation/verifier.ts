@@ -40,6 +40,7 @@ function payloadToSignString(payload: {
   path: string;
   bodyHash: string;
   nonce?: string;
+  tenantId?: string;
 }): string {
   const obj: Record<string, string> = {
     bodyHash: payload.bodyHash,
@@ -48,6 +49,7 @@ function payloadToSignString(payload: {
     timestamp: payload.timestamp,
   };
   if (payload.nonce) obj.nonce = payload.nonce;
+  if (payload.tenantId) obj.tenantId = payload.tenantId;
   return JSON.stringify(obj, Object.keys(obj).sort());
 }
 
@@ -69,11 +71,28 @@ export async function verifyAttestation(
 
 async function verifyTpmAttestation(
   att: TpmAttestation,
-  registry: AgentRegistry
+  registry: AgentRegistry,
+  requestContext?: RequestContext
 ): Promise<string | null> {
   const ts = new Date(att.payload.timestamp).getTime();
   if (Number.isNaN(ts) || Math.abs(Date.now() - ts) > REPLAY_WINDOW_MS) {
     return null;
+  }
+
+  if (requestContext) {
+    if (
+      att.payload.method !== requestContext.method ||
+      att.payload.path !== requestContext.path ||
+      att.payload.bodyHash !== requestContext.bodyHash
+    ) {
+      return null;
+    }
+    if (requestContext.tenantId !== undefined) {
+      const payloadTenant = att.payload.tenantId ?? '';
+      if (payloadTenant !== requestContext.tenantId) {
+        return null;
+      }
+    }
   }
 
   const payloadStr = payloadToSignString(att.payload);
@@ -105,8 +124,11 @@ async function verifyTpmAttestation(
 
 async function verifyFido2Attestation(
   att: Fido2Attestation,
-  registry: AgentRegistry
+  registry: AgentRegistry,
+  _requestContext?: RequestContext
 ): Promise<string | null> {
+  // FIDO2 challenge is server-issued; request binding would require challenge
+  // to encode method/path/bodyHash. Not yet implemented.
   const rpID = process.env.RP_ID ?? 'localhost';
   const origin =
     process.env.RP_ORIGIN ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`;

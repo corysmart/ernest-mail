@@ -38,11 +38,11 @@ curl -H "Authorization: ApiKey $API_KEY" \
 ```
 
 ### Send email
-`POST /emails/send`
+`POST /emails/send` — requires agent attestation (`X-Attestation` header), not API key. See [docs/ATTESTATION.md](docs/ATTESTATION.md).
 
 ```bash
 curl -X POST http://127.0.0.1:3100/emails/send \
-  -H "Authorization: ApiKey $API_KEY" \
+  -H "X-Attestation: <base64url-encoded-attestation>" \
   -H "Content-Type: application/json" \
   -d '{
     "accountId": "<accountId>",
@@ -52,6 +52,8 @@ curl -X POST http://127.0.0.1:3100/emails/send \
     "html": "<p>HTML body</p>"
   }'
 ```
+
+Agent routes (`/emails/send`) use TPM or FIDO2 attestation. Admin routes (`/accounts`, `/agents/register`) use `Authorization: ApiKey $API_KEY`.
 
 ### Agent registration (admin-only)
 `GET /agents/register/options?agentId=<id>` to fetch WebAuthn options, then `POST /agents/register` with the attestation result.
@@ -70,7 +72,6 @@ curl -X POST http://127.0.0.1:3100/agents/register \
 - Prerequisites: Node.js 20+ and npm.
 - Install deps: `npm install`
 - Configure env: `cp .env.example .env` then set `API_KEY` (required) and optional paths/limits.
-- For production email: set `RESEND_API_KEY` and `RESEND_FROM` (verified sender); accounts with `provider: "resend"` will use the Resend API. Without `RESEND_API_KEY`, only `local-dev` accounts work.
 - Start dev server: `npm run dev` (binds 127.0.0.1:3100 by default; production binds 0.0.0.0 when `NODE_ENV=production`).
 - Run checks: `npm run lint && npm run build && npm test`
 - Data files in `data/` persist between runs; delete them to reset local state.

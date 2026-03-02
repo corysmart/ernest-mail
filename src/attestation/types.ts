@@ -19,6 +19,8 @@ export interface SignedPayload {
   bodyHash: string;
   /** Nonce from server challenge (if used). */
   nonce?: string;
+  /** Tenant ID for routes that scope by tenant (e.g. /emails/send). */
+  tenantId?: string;
 }
 
 /** TPM attestation: signature over SignedPayload. */

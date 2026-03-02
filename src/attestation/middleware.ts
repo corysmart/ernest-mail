@@ -4,17 +4,34 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { verifyAttestation, type AgentRegistry } from './verifier.js';
+import {
+  verifyAttestation,
+  type AgentRegistry,
+  type RequestContext,
+} from './verifier.js';
 import type { Attestation } from './types.js';
+import { attestationTokenId, type ReplayStore } from './replayStore.js';
+import { computeBodyHash } from './bodyHash.js';
 
 const API_KEY_HEADER = 'authorization';
 const ATTESTATION_HEADER = 'x-attestation';
+const TENANT_ID_HEADER = 'x-tenant-id';
 
 function parseApiKey(authHeader: unknown): string | null {
   if (!authHeader || typeof authHeader !== 'string') return null;
   const [scheme, token] = authHeader.split(' ');
   if ((scheme === 'ApiKey' || scheme === 'Bearer') && token) return token;
   return null;
+}
+
+function getTenantId(req: Request): string | undefined {
+  const header = req.headers[TENANT_ID_HEADER];
+  if (typeof header === 'string' && header.trim()) return header.trim();
+  const body = req.body as Record<string, unknown> | undefined;
+  const fromBody =
+    (body?.tenantId ?? body?.tenant_id) as string | undefined;
+  if (typeof fromBody === 'string' && fromBody.trim()) return fromBody.trim();
+  return undefined;
 }
 
 /**
@@ -46,15 +63,19 @@ export function createAdminAuthMiddleware(options: {
   };
 }
 
+const REPLAY_TTL_MS = 5 * 60 * 1000; // 5 minutes, matches verifier replay window
+
 /**
  * Agent auth: attestation (TPM/FIDO2) only. Use for sends, credits, etc.
  * Rejects API key; agent flows must use hardware attestation.
+ * When replayStore is provided, rejects replayed attestations (single-use).
  */
 export function createAgentAuthMiddleware(options: {
   agentRegistry?: AgentRegistry;
   getAgentRegistry?: () => Promise<AgentRegistry>;
+  replayStore?: ReplayStore;
 }) {
-  const { agentRegistry, getAgentRegistry } = options;
+  const { agentRegistry, getAgentRegistry, replayStore } = options;
   return async (req: Request, res: Response, next: NextFunction) => {
     const attestationRaw = req.headers[ATTESTATION_HEADER];
     if (!attestationRaw || typeof attestationRaw !== 'string') {
@@ -64,14 +85,33 @@ export function createAgentAuthMiddleware(options: {
       });
       return;
     }
+    const tokenId = attestationTokenId(attestationRaw);
+    if (replayStore?.isUsed(tokenId)) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        hint: 'Attestation already used (replay detected).',
+      });
+      return;
+    }
     try {
       const attestation = JSON.parse(
         Buffer.from(attestationRaw, 'base64url').toString('utf8')
       ) as Attestation;
       const registry =
         agentRegistry ?? (getAgentRegistry ? await getAgentRegistry() : new Map());
-      const agentId = await verifyAttestation(attestation, registry);
+      const requestContext: RequestContext = {
+        method: req.method,
+        path: req.path,
+        bodyHash: computeBodyHash(req.body),
+        tenantId: getTenantId(req),
+      };
+      const agentId = await verifyAttestation(
+        attestation,
+        registry,
+        requestContext
+      );
       if (agentId) {
+        replayStore?.markUsed(tokenId, REPLAY_TTL_MS);
         (req as Request & { agentId?: string }).agentId = agentId;
         return next();
       }
@@ -115,7 +155,17 @@ export function createAuthMiddleware(options: {
         ) as Attestation;
         const registry =
           agentRegistry ?? (getAgentRegistry ? await getAgentRegistry() : new Map());
-        const agentId = await verifyAttestation(attestation, registry);
+        const requestContext: RequestContext = {
+          method: req.method,
+          path: req.path,
+          bodyHash: computeBodyHash(req.body),
+          tenantId: getTenantId(req),
+        };
+        const agentId = await verifyAttestation(
+          attestation,
+          registry,
+          requestContext
+        );
         if (agentId) {
           (req as Request & { agentId?: string }).agentId = agentId;
           return next();
