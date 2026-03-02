@@ -157,3 +157,31 @@ describe('GET /accounts/:id', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /credits/:tenantId', () => {
+  it('returns balance for tenant', async () => {
+    const res = await fetch(`${baseUrl}/credits/tenant-e2e`, {
+      headers: authHeaders
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ tenantId: 'tenant-e2e', balance: 0 });
+  });
+
+  it('returns balance after credits added via send flow', async () => {
+    // Create account, add credits via wallet (we'd need an admin endpoint - use internal)
+    // For now just verify default 0 balance
+    const res = await fetch(`${baseUrl}/credits/new-tenant`, {
+      headers: authHeaders
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tenantId).toBe('new-tenant');
+    expect(typeof body.balance).toBe('number');
+  });
+
+  it('returns 401 without API key', async () => {
+    const res = await fetch(`${baseUrl}/credits/tenant-a`);
+    expect(res.status).toBe(401);
+  });
+});

@@ -1,5 +1,7 @@
 import type { AccountRepository } from '../accounts.js';
 import type { ProviderAdapter } from '../providers.js';
+import type { WalletStoreInterface } from '../fileWalletStore.js';
+import { isAdminTenant } from '../fileWalletStore.js';
 
 export interface SendEmailRequestBody {
   accountId?: string;
@@ -17,6 +19,8 @@ export interface SendEmailRequestBody {
 export interface SendEmailDeps {
   accountRepository: AccountRepository;
   getProviderAdapter(provider: string): ProviderAdapter;
+  walletStore?: WalletStoreInterface;
+  creditsPerEmail?: number;
 }
 
 export interface SendEmailResult {
@@ -60,6 +64,8 @@ export async function processSendEmail(
   }
 
   const tenantId = body.tenantId ?? body.tenant_id;
+  const tenantIdStr =
+    typeof tenantId === 'string' && tenantId.trim() ? tenantId.trim() : undefined;
 
   const account = await deps.accountRepository.getById(accountId.trim());
   if (!account) {
@@ -68,6 +74,35 @@ export async function processSendEmail(
 
   if (account.status === 'disabled') {
     return { status: 403, body: { error: 'Account is disabled' } };
+  }
+
+  // Credit deduction (skip for admin tenants or when no wallet/store)
+  if (deps.walletStore && tenantIdStr) {
+    const creditsPerEmail = deps.creditsPerEmail ?? 1;
+    if (!isAdminTenant(tenantIdStr)) {
+      const balance = await deps.walletStore.getBalance(tenantIdStr);
+      if (balance < creditsPerEmail) {
+        return {
+          status: 402,
+          body: {
+            error: 'Insufficient credits',
+            balance,
+            required: creditsPerEmail
+          }
+        };
+      }
+      const deduction = await deps.walletStore.deduct(tenantIdStr, creditsPerEmail);
+      if (!deduction.success) {
+        return {
+          status: 402,
+          body: {
+            error: 'Insufficient credits',
+            balance: deduction.newBalance,
+            required: creditsPerEmail
+          }
+        };
+      }
+    }
   }
 
   try {

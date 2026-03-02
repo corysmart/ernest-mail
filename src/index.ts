@@ -9,6 +9,7 @@ import express from 'express';
 import { createAdminAuthMiddleware } from './attestation/middleware.js';
 import { FileAgentRegistry } from './attestation/agentRegistry.js';
 import { FileAccountRepository } from './fileAccountRepository.js';
+import { FileWalletStore } from './fileWalletStore.js';
 import type { AccountProvider, CreateAccountInput } from './accounts.js';
 import { getProviderAdapter } from './providers.js';
 import { processSendEmail } from './handlers/sendEmail.js';
@@ -38,6 +39,12 @@ const agentRegistry = new FileAgentRegistry(agentsPath);
 const accountsPath =
   process.env.ACCOUNTS_PATH ?? join(process.cwd(), 'data', 'accounts.json');
 const accountRepository = new FileAccountRepository(accountsPath);
+
+const walletPath =
+  process.env.WALLET_PATH ?? join(process.cwd(), 'data', 'wallets.json');
+const defaultInitialCredits = Number(process.env.DEFAULT_INITIAL_CREDITS ?? 0) || 0;
+const walletStore = new FileWalletStore(walletPath, { defaultInitialCredits });
+const creditsPerEmail = Math.max(1, Number(process.env.CREDITS_PER_EMAIL ?? 1) || 1);
 
 const adminAuth = createAdminAuthMiddleware({
   getApiKey: () => process.env.API_KEY,
@@ -129,11 +136,30 @@ app.get('/accounts/:id', adminAuth, async (req, res) => {
   res.json(withRequestId(res, account));
 });
 
+/** Get credits balance for tenant. API key required. */
+app.get('/credits/:tenantId', adminAuth, async (req, res) => {
+  const tenantId = req.params.tenantId;
+  if (typeof tenantId !== 'string' || !tenantId.trim()) {
+    res.status(400).json(withRequestId(res, { error: 'tenantId required' }));
+    return;
+  }
+  const balance = await walletStore.getBalance(tenantId.trim());
+  res.json(withRequestId(res, { tenantId: tenantId.trim(), balance }));
+});
+
 /** Send an email using a managed account. API key required. */
 app.post('/emails/send', adminAuth, async (req, res) => {
-  const result = await processSendEmail(req.body, {
+  const tenantId =
+    req.body?.tenantId ?? req.body?.tenant_id ?? req.headers['x-tenant-id'];
+  const body = {
+    ...req.body,
+    tenantId: typeof tenantId === 'string' ? tenantId : undefined
+  };
+  const result = await processSendEmail(body, {
     accountRepository,
     getProviderAdapter,
+    walletStore,
+    creditsPerEmail
   });
   res.status(result.status).json(withRequestId(res, result.body));
 });
