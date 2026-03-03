@@ -16,6 +16,7 @@ import { FileWalletStore } from './fileWalletStore.js';
 import type { AccountProvider, CreateAccountInput } from './accounts.js';
 import { getProviderAdapter } from './providers.js';
 import { processSendEmail } from './handlers/sendEmail.js';
+import { listReceivedEmails, getReceivedEmail } from './resendReceiving.js';
 import {
   createRateLimiter,
   errorHandler,
@@ -179,6 +180,45 @@ app.get('/credits/:tenantId', adminAuth, async (req, res) => {
   }
   const balance = await walletStore.getBalance(tenantId.trim());
   res.json(withRequestId(res, { tenantId: tenantId.trim(), balance }));
+});
+
+/** List received emails (Resend Inbound). Attestation required (X-Attestation). */
+app.get('/emails/received', agentAuth, async (_req, res) => {
+  const limit = _req.query.limit;
+  const after = _req.query.after;
+  const before = _req.query.before;
+  const opts: { limit?: number; after?: string; before?: string } = {};
+  if (typeof limit === 'string') {
+    const n = Number(limit);
+    if (!Number.isNaN(n)) opts.limit = Math.min(100, Math.max(1, n));
+  }
+  if (typeof after === 'string' && after.trim()) opts.after = after.trim();
+  if (typeof before === 'string' && before.trim()) opts.before = before.trim();
+  const result = await listReceivedEmails(opts);
+  if (!result.ok) {
+    res
+      .status(result.status ?? 502)
+      .json(withRequestId(res, { error: result.error ?? 'Failed to list received emails' }));
+    return;
+  }
+  res.json(withRequestId(res, result.data ?? { object: 'list', has_more: false, data: [] }));
+});
+
+/** Get a single received email by ID (full content). Attestation required (X-Attestation). */
+app.get('/emails/received/:id', agentAuth, async (req, res) => {
+  const id = req.params.id;
+  if (!id || typeof id !== 'string') {
+    res.status(400).json(withRequestId(res, { error: 'email id required' }));
+    return;
+  }
+  const result = await getReceivedEmail(id);
+  if (!result.ok) {
+    res
+      .status(result.status ?? 502)
+      .json(withRequestId(res, { error: result.error ?? 'Failed to retrieve received email' }));
+    return;
+  }
+  res.json(withRequestId(res, result.data ?? {}));
 });
 
 /** Send an email using a managed account. Attestation required (X-Attestation). */
